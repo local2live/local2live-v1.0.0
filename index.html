@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;" />
+  <title>local2live</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─────────────────────────────────────────────────────────────────────
+       DESIGN TOKENS
+    ──────────────────────────────────────────────────────────────────── */
+    :root {
+      --mono: 'JetBrains Mono', 'Courier New', monospace;
+      --radius: 4px;
+      --transition: 0.18s ease;
+    }
+
+    /* ── Dark theme (default) ── */
+    [data-theme="dark"] {
+      --bg:             #0d1117;
+      --bg-alt:         #161b22;
+      --bg-panel:       #0d1117;
+      --border:         #30363d;
+      --border-bright:  #58a6ff;
+      --text:           #c9d1d9;
+      --text-dim:       #6e7681;
+      --text-bright:    #e6edf3;
+      --green:          #3fb950;
+      --green-dim:      rgba(63,185,80,0.12);
+      --green-glow:     rgba(63,185,80,0.35);
+      --amber:          #d29922;
+      --red:            #f85149;
+      --red-dim:        rgba(248,81,73,0.12);
+      --blue:           #58a6ff;
+      --blue-dim:       rgba(88,166,255,0.10);
+      --prompt:         #3fb950;
+      --cursor-color:   #58a6ff;
+      --scanline:       rgba(255,255,255,0.018);
+    }
+
+    /* ── Light theme ── */
+    [data-theme="light"] {
+      --bg:             #f6f8fa;
+      --bg-alt:         #ffffff;
+      --bg-panel:       #f6f8fa;
+      --border:         #d0d7de;
+      --border-bright:  #0969da;
+      --text:           #24292f;
+      --text-dim:       #6e7781;
+      --text-bright:    #1f2328;
+      --green:          #1a7f37;
+      --green-dim:      rgba(26,127,55,0.10);
+      --green-glow:     rgba(26,127,55,0.25);
+      --amber:          #9a6700;
+      --red:            #cf222e;
+      --red-dim:        rgba(207,34,46,0.08);
+      --blue:           #0969da;
+      --blue-dim:       rgba(9,105,218,0.08);
+      --prompt:         #1a7f37;
+      --cursor-color:   #0969da;
+      --scanline:       transparent;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       RESET
+    ──────────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: var(--mono);
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: subpixel-antialiased;
+      line-height: 1.6;
+      transition: background var(--transition), color var(--transition);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       SCANLINE OVERLAY (dark only)
+    ──────────────────────────────────────────────────────────────────── */
+    body::before {
+      content: '';
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: repeating-linear-gradient(
+        to bottom,
+        var(--scanline) 0px,
+        var(--scanline) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       LAYOUT — three-column grid: sidebar | main | log
+    ──────────────────────────────────────────────────────────────────── */
+    .app {
+      display: grid;
+      grid-template-rows: 38px 1fr;
+      grid-template-columns: 220px 1fr 300px;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       TOP BAR
+    ──────────────────────────────────────────────────────────────────── */
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: var(--bg-alt);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    .topbar-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-bright);
+      font-weight: 700;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      -webkit-app-region: no-drag;
+    }
+
+    .topbar-logo .sigil {
+      color: var(--green);
+      font-size: 14px;
+    }
+
+    .topbar-spacer { flex: 1; }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      -webkit-app-region: no-drag;
+    }
+
+    /* Custom Window Controls */
+    .window-controls {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      -webkit-app-region: no-drag;
+    }
+    
+    .win-btn {
+      background: none;
+      border: none;
+      border-right: 1px solid var(--border);
+      color: var(--text-dim);
+      width: 28px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background var(--transition), color var(--transition);
+    }
+    .win-btn:last-child {
+      border-right: none;
+    }
+    .win-btn:hover {
+      background: var(--blue-dim);
+      color: var(--text-bright);
+    }
+    .win-btn.close:hover {
+      background: var(--red);
+      color: #fff;
+    }
+
+    /* Theme toggle */
+    .theme-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 3px 9px;
+      transition: border-color var(--transition), color var(--transition), background var(--transition);
+    }
+    .theme-toggle:hover {
+      border-color: var(--border-bright);
+      color: var(--text-bright);
+      background: var(--blue-dim);
+    }
+
+    /* Version badge */
+    .version-badge {
+      font-size: 10px;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 2px 6px;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       SIDEBAR
+    ──────────────────────────────────────────────────────────────────── */
+    .sidebar {
+      background: var(--bg-alt);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: background var(--transition);
+    }
+
+    .sidebar-section {
+      padding: 10px 0 4px;
+    }
+
+    .sidebar-title {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-dim);
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      padding: 0 14px 6px;
+    }
+
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--text-dim);
+      cursor: default;
+      border-left: 2px solid transparent;
+      transition: color var(--transition), border-color var(--transition), background var(--transition);
+    }
+
+    .sidebar-item.active {
+      color: var(--text-bright);
+      border-left-color: var(--blue);
+      background: var(--blue-dim);
+    }
+
+    .sidebar-item .dot-sm {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .sidebar-item .dot-sm.running  { background: var(--green); box-shadow: 0 0 6px var(--green-glow); animation: blink 2s ease-in-out infinite; }
+    .sidebar-item .dot-sm.starting { background: var(--amber); animation: blink 1s ease-in-out infinite; }
+    .sidebar-item .dot-sm.error    { background: var(--red); }
+    .sidebar-item .dot-sm.stopped  { background: var(--text-dim); }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .sidebar-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 8px 14px;
+    }
+
+    .sidebar-stat {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 14px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .sidebar-stat span:last-child {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       MAIN PANEL
+    ──────────────────────────────────────────────────────────────────── */
+    .main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+      transition: background var(--transition);
+    }
+
+
+
+    /* ── Input section ── */
+    .input-section {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .prompt-line {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+    }
+
+    .prompt-line:focus-within {
+      border-color: var(--border-bright);
+      box-shadow: 0 0 0 2px var(--blue-dim);
+    }
+
+    .prompt-prefix {
+      padding: 10px 12px;
+      color: var(--prompt);
+      font-size: 13px;
+      font-weight: 700;
+      background: var(--bg);
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background var(--transition);
+      user-select: none;
+    }
+
+    .prompt-input {
+      flex: 1;
+      padding: 10px 14px;
+      background: transparent;
+      border: none;
+      color: var(--text-bright);
+      font-family: var(--mono);
+      font-size: 13px;
+      outline: none;
+      caret-color: var(--cursor-color);
+    }
+
+    .prompt-input::placeholder { color: var(--text-dim); }
+    .prompt-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 18px;
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background var(--transition), border-color var(--transition), color var(--transition), opacity var(--transition), box-shadow var(--transition);
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+
+    .btn-primary {
+      background: var(--green-dim);
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: rgba(63,185,80,0.20);
+      box-shadow: 0 0 12px var(--green-glow);
+    }
+
+    .btn-danger {
+      background: var(--red-dim);
+      border-color: var(--red);
+      color: var(--red);
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(248,81,73,0.20);
+    }
+
+    /* ── Output section ── */
+    .output-section {
+      flex: 1;
+      padding: 20px 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* URL output card */
+    .url-card {
+      display: none;
+      background: var(--bg-alt);
+      border: 1px solid var(--green);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 0 20px var(--green-glow);
+      transition: background var(--transition);
+    }
+    .url-card.visible { display: block; }
+
+    .url-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--green-dim);
+      border-bottom: 1px solid var(--green);
+      font-size: 10px;
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 700;
+    }
+
+    .url-card-body {
+      display: flex;
+      align-items: center;
+    }
+
+    .url-text {
+      flex: 1;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--green);
+      word-break: break-all;
+      user-select: all;
+    }
+
+    .btn-copy {
+      padding: 12px 16px;
+      border: none;
+      border-left: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 11px;
+      cursor: pointer;
+      transition: background var(--transition), color var(--transition);
+      white-space: nowrap;
+    }
+    .btn-copy:hover { background: var(--blue-dim); color: var(--blue); }
+    .btn-copy.copied { color: var(--green); background: var(--green-dim); }
+
+    /* Status line */
+    .status-line {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--text-dim);
+      padding: 6px 0;
+    }
+
+    .status-prefix { color: var(--text-dim); }
+    .status-msg { color: var(--text); }
+    .status-msg.running  { color: var(--green); }
+    .status-msg.error    { color: var(--red); }
+    .status-msg.starting { color: var(--amber); }
+
+    /* Blinking cursor after status */
+    .cursor-blink {
+      display: inline-block;
+      width: 8px;
+      height: 13px;
+      background: var(--cursor-color);
+      margin-left: 4px;
+      vertical-align: text-bottom;
+      animation: cursorBlink 1.1s step-end infinite;
+    }
+    @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       RIGHT PANEL — LOG
+    ──────────────────────────────────────────────────────────────────── */
+    .log-panel {
+      border-left: 1px solid var(--border);
+      background: var(--bg-alt);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: background var(--transition);
+    }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .btn-clear-log {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 10px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: var(--radius);
+      transition: color var(--transition), background var(--transition);
+    }
+    .btn-clear-log:hover { color: var(--text-bright); background: var(--blue-dim); }
+
+    .log-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 0;
+      font-size: 11px;
+      line-height: 1.7;
+    }
+
+    .log-line {
+      display: flex;
+      gap: 8px;
+      padding: 1px 14px;
+      font-size: 11px;
+      transition: background 0.1s;
+    }
+    .log-line:hover { background: var(--blue-dim); }
+
+    .log-ts {
+      color: var(--text-dim);
+      flex-shrink: 0;
+      font-size: 10px;
+      padding-top: 1px;
+    }
+
+    .log-msg { color: var(--text); word-break: break-word; }
+    .log-msg.info    { color: var(--text); }
+    .log-msg.success { color: var(--green); }
+    .log-msg.warn    { color: var(--amber); }
+    .log-msg.error   { color: var(--red); }
+    .log-msg.dim     { color: var(--text-dim); }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       SCROLLBARS
+    ──────────────────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── TOP BAR ───────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-logo">
+      <span class="sigil">▲</span>
+      local2live
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-right">
+      <button class="theme-toggle" id="btn-theme" title="Toggle theme">
+        <span id="theme-icon">☀</span>
+        <span id="theme-label">Light</span>
+      </button>
+      <span class="version-badge">v1.0.0</span>
+      <div class="window-controls">
+        <button id="win-min" class="win-btn">−</button>
+        <button id="win-max" class="win-btn">□</button>
+        <button id="win-close" class="win-btn close">×</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── SIDEBAR ───────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title" style="display: flex; justify-content: space-between; align-items: center; padding-right: 14px;">
+        <span>Sessions</span>
+        <button id="btn-add-tunnel" title="New Tunnel" style="background:none; border:none; color:var(--text-bright); cursor:pointer; font-size:16px; font-weight:bold; line-height:1; transition:color 0.2s;">+</button>
+      </div>
+      <div id="session-list">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <div class="sidebar-divider"></div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Info</div>
+      <div class="sidebar-stat">
+        <span>Port</span>
+        <span id="info-port">—</span>
+      </div>
+      <div class="sidebar-stat">
+        <span>Status</span>
+        <span id="info-status">idle</span>
+      </div>
+      <div class="sidebar-stat">
+        <span>Uptime</span>
+        <span id="info-uptime">—</span>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      powered by localtunnel<br/>
+      tunnel closes on exit
+    </div>
+  </aside>
+
+  <!-- ── MAIN ─────────────────────────────────────────────────────────── -->
+  <main class="main">
+
+
+    <!-- Input -->
+    <div class="input-section">
+      <div class="prompt-line">
+        <div class="prompt-prefix">$ tunnel</div>
+        <input
+          class="prompt-input"
+          id="input-url"
+          type="text"
+          placeholder="http://localhost:3000"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-start">
+          <span>▶</span> Generate Public Link
+        </button>
+        <button class="btn btn-danger" id="btn-stop" disabled>
+          <span>■</span> Stop Tunnel
+        </button>
+      </div>
+    </div>
+
+    <!-- Output -->
+    <div class="output-section">
+
+      <!-- Status line -->
+      <div class="status-line">
+        <span class="status-prefix">→</span>
+        <span class="status-msg" id="status-text">Waiting for input…</span>
+        <span class="cursor-blink" id="cursor-blink"></span>
+      </div>
+
+      <!-- Public URL card (hidden until running) -->
+      <div class="url-card" id="url-card">
+        <div class="url-card-header">
+          <span>◉</span> Public URL — Active
+        </div>
+        <div class="url-card-body">
+          <div class="url-text" id="public-url"></div>
+          <button class="btn-copy" id="btn-copy">[ copy ]</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── LOG PANEL ─────────────────────────────────────────────────────── -->
+  <aside class="log-panel">
+    <div class="log-header">
+      <span>Activity Log</span>
+      <button class="btn-clear-log" id="btn-clear-log">clear</button>
+    </div>
+    <div class="log-body" id="log-body"></div>
+  </aside>
+
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>
