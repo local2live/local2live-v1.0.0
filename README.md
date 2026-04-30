@@ -70,4 +70,4 @@ If you don't have a Mac, you can set up GitHub Actions (which is free for open-s
 Contributions, issues and feature requests are welcome!
 
 ## 📜 License
-This project is licensed under the MIT License.
+This project is licensed under the GNU-v2 License.
