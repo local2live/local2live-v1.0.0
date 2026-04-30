@@ -17,7 +17,7 @@ To get started with Local2Live, you need to have [Node.js](https://nodejs.org/) 
 
 1. **Clone the repository:**
    ```bash
-   git clone <YOUR_GITHUB_REPO_URL>
+   git clone https://github.com/local2live/local2live-v1.0.0.git
    cd local2live
    ```
 
